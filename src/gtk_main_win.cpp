@@ -427,7 +427,7 @@ plugin_strip *gtk_main_window::create_strip(jack_host *plugin)
     
     // remove buton 1, 1
     strip->extra = calf_button_new("×");
-    g_signal_connect(GTK_OBJECT(strip->extra), "clicked", G_CALLBACK(extra_button_pressed), 
+    g_signal_connect(G_OBJECT(strip->extra), "clicked", G_CALLBACK(extra_button_pressed), 
         (plugin_ctl_iface *)strip);
     gtk_widget_show(strip->extra);
     gtk_table_attach(GTK_TABLE(strip->strip_table), GTK_WIDGET(strip->extra), 1, 2, 1, 2, (GtkAttachOptions)0, (GtkAttachOptions)0, 5, 5);
@@ -444,7 +444,7 @@ plugin_strip *gtk_main_window::create_strip(jack_host *plugin)
     GtkWidget *ebox = gtk_event_box_new ();
     gtk_event_box_set_visible_window(GTK_EVENT_BOX(ebox), FALSE);
     gtk_widget_set_events(ebox, GDK_BUTTON_PRESS_MASK);
-    gtk_signal_connect(GTK_OBJECT(ebox), "button_press_event", GTK_SIGNAL_FUNC(on_edit_title), strip);
+    g_signal_connect(G_OBJECT(ebox), "button_press_event", G_CALLBACK(on_edit_title), strip);
     
     gtk_container_add(GTK_CONTAINER(align), strip->name);
     gtk_container_add(GTK_CONTAINER(ebox), align);
@@ -457,20 +457,20 @@ plugin_strip *gtk_main_window::create_strip(jack_host *plugin)
     gtk_widget_set_size_request(strip->entry, 180, -1);
     gtk_table_attach(GTK_TABLE(strip->strip_table), strip->entry, 2, 3, 1, 2, (GtkAttachOptions)0, ao, 10, 0);
     gtk_widget_show_all(strip->entry);
-    gtk_signal_connect(GTK_OBJECT(strip->entry), "activate", GTK_SIGNAL_FUNC(on_activate_entry), strip);
-    gtk_signal_connect(GTK_OBJECT(strip->entry), "focus-out-event", GTK_SIGNAL_FUNC(on_blur_entry), strip);
+    g_signal_connect(G_OBJECT(strip->entry), "activate", G_CALLBACK(on_activate_entry), strip);
+    g_signal_connect(G_OBJECT(strip->entry), "focus-out-event", G_CALLBACK(on_blur_entry), strip);
     gtk_widget_hide(strip->entry);
     
     // open button
     strip->button = calf_toggle_button_new("Open");
-    g_signal_connect(GTK_OBJECT(strip->button), "toggled", G_CALLBACK(gui_button_pressed), 
+    g_signal_connect(G_OBJECT(strip->button), "toggled", G_CALLBACK(gui_button_pressed), 
         (plugin_ctl_iface *)strip);
     gtk_widget_show(strip->button);
-    //g_signal_connect (GTK_OBJECT (widget), "value-changed", G_CALLBACK (toggle_value_changed), (gpointer)this);
+    //g_signal_connect (G_OBJECT (widget), "value-changed", G_CALLBACK (toggle_value_changed), (gpointer)this);
 
     // connect button
     strip->con = calf_toggle_button_new("Connect");
-    g_signal_connect(GTK_OBJECT(strip->con), "toggled", G_CALLBACK(connect_button_pressed), 
+    g_signal_connect(G_OBJECT(strip->con), "toggled", G_CALLBACK(connect_button_pressed), 
         (plugin_ctl_iface *)strip);
     gtk_widget_show(strip->con);
     
@@ -612,7 +612,7 @@ void gtk_main_window::sort_strips()
                 break;
         }
         bool rem = false;
-        if(i->second->strip_table->parent != NULL) {
+        if(gtk_widget_get_parent(i->second->strip_table) != NULL) {
             rem = true;
             g_object_ref(i->second->strip_table);
             gtk_container_remove(GTK_CONTAINER(strips_table), GTK_WIDGET(i->second->strip_table));
@@ -757,7 +757,7 @@ window_state describe_window (GtkWindow *win)
 
 void position_window (GtkWidget *win, window_state state)
 {
-    gdk_window_move_resize(win->window, state.x, state.y, state.width, state.height);
+    gdk_window_move_resize(gtk_widget_get_window(win), state.x, state.y, state.width, state.height);
     gtk_window_set_screen(GTK_WINDOW(win), state.screen);
 }
 
@@ -869,7 +869,7 @@ void gtk_main_window::create()
     gtk_table_set_col_spacings(GTK_TABLE(strips_table), 0);
     gtk_table_set_row_spacings(GTK_TABLE(strips_table), 0);
     
-    for(GList *p = GTK_TABLE(strips_table)->children; p != NULL; p = p->next)
+    for(GList *p = gtk_container_get_children(GTK_CONTAINER(strips_table)); p != NULL; p = p->next)
     {
         GtkTableChild *c = (GtkTableChild *)p->data;
         if (c->top_attach == 0) {
@@ -890,7 +890,7 @@ void gtk_main_window::create()
     gtk_container_add(GTK_CONTAINER(all_vbox), evbox);
     gtk_container_add(GTK_CONTAINER(toplevel), all_vbox);
     
-    gtk_signal_connect(GTK_OBJECT(evbox), "button-press-event", GTK_SIGNAL_FUNC(on_table_clicked), NULL);
+    g_signal_connect(G_OBJECT(evbox), "button-press-event", G_CALLBACK(on_table_clicked), NULL);
     gtk_widget_set_can_focus(evbox, TRUE);
     
     gtk_widget_set_name(GTK_WIDGET(strips_table), "Calf-Container");
@@ -906,8 +906,8 @@ void gtk_main_window::create()
     
     notifier = get_config_db()->add_listener(this);
     on_config_change();
-    g_signal_connect(GTK_OBJECT(toplevel), "destroy", G_CALLBACK(window_destroy_cb), this);
-    g_signal_connect(GTK_OBJECT(toplevel), "delete_event", G_CALLBACK(window_delete_cb), this);
+    g_signal_connect(G_OBJECT(toplevel), "destroy", G_CALLBACK(window_destroy_cb), this);
+    g_signal_connect(G_OBJECT(toplevel), "delete_event", G_CALLBACK(window_delete_cb), this);
     
     if (get_config()->win_start_hidden)
         g_idle_add((GSourceFunc)window_hide, this);
@@ -926,10 +926,10 @@ void gtk_main_window::create_status_icon()
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), exit);
     gtk_widget_show_all (menu);
     
-    gtk_status_icon_set_tooltip (icon, "Calf Studio Gear");
+    gtk_status_icon_set_tooltip_text (icon, "Calf Studio Gear");
     
-    g_signal_connect(GTK_STATUS_ICON (icon), "activate", GTK_SIGNAL_FUNC (tray_activate_cb), this);
-    g_signal_connect(GTK_STATUS_ICON (icon), "popup-menu", GTK_SIGNAL_FUNC (tray_popup_cb), menu);
+    g_signal_connect(GTK_STATUS_ICON (icon), "activate", G_CALLBACK (tray_activate_cb), this);
+    g_signal_connect(GTK_STATUS_ICON (icon), "popup-menu", G_CALLBACK (tray_popup_cb), menu);
 }
 
 void gtk_main_window::on_config_change()

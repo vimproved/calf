@@ -92,22 +92,26 @@ calf_phase_graph_copy_surface(cairo_t *ctx, cairo_surface_t *source, int x = 0, 
     cairo_restore(ctx);
 }
 static gboolean
-calf_phase_graph_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_phase_graph_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_PHASE_GRAPH(widget));
     CalfPhaseGraph *pg = CALF_PHASE_GRAPH(widget);
+    GtkAllocation allocation;
+    GtkStyle *style = gtk_widget_get_style(widget);
     if (!pg->source) 
         return FALSE;
+
+    gtk_widget_get_allocation(widget, &allocation);
     
     // dimensions
-    int width  = widget->allocation.width;
-    int height = widget->allocation.height;
-    int ox     = widget->style->xthickness;
-    int oy     = widget->style->ythickness;
+    int width  = allocation.width;
+    int height = allocation.height;
+    int ox     = style->xthickness;
+    int oy     = style->ythickness;
     int sx     = width - ox * 2;
     int sy     = height - oy * 2;
-    int x      = widget->allocation.x;
-    int y      = widget->allocation.y;
+    int x      = allocation.x;
+    int y      = allocation.y;
     
     sx += sx % 2 - 1;
     sy += sy % 2 - 1;
@@ -128,7 +132,6 @@ calf_phase_graph_expose (GtkWidget *widget, GdkEventExpose *event)
     bool display = true;
     
     // cairo initialization stuff
-    cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(widget->window));
     cairo_t *ctx_back;
     cairo_t *ctx_cache;
     
@@ -249,14 +252,17 @@ calf_phase_graph_size_allocate (GtkWidget *widget,
     g_assert(CALF_IS_PHASE_GRAPH(widget));
     CalfPhaseGraph *lg = CALF_PHASE_GRAPH(widget);
 
+    GtkAllocation widget_allocation;
     GtkWidgetClass *parent_class = (GtkWidgetClass *) g_type_class_peek_parent( CALF_PHASE_GRAPH_GET_CLASS( lg ) );
+
+    gtk_widget_get_allocation(widget, &widget_allocation);
 
     if(lg->background)
         cairo_surface_destroy(lg->background);
     lg->background = NULL;
     
-    widget->allocation = *allocation;
-    GtkAllocation &a = widget->allocation;
+    widget_allocation = *allocation;
+    GtkAllocation &a = widget_allocation;
     if (a.width > a.height) {
         a.x += (a.width - a.height) / 2;
         a.width = a.height;
@@ -272,8 +278,7 @@ static void
 calf_phase_graph_class_init (CalfPhaseGraphClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_phase_graph_expose;
-    widget_class->size_request = calf_phase_graph_size_request;
+    widget_class->draw = calf_phase_graph_draw;
     widget_class->size_allocate = calf_phase_graph_size_allocate;
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("border-radius", "Border Radius", "Generate round edges",
@@ -303,12 +308,16 @@ calf_phase_graph_unrealize (GtkWidget *widget, CalfPhaseGraph *pg)
 static void
 calf_phase_graph_init (CalfPhaseGraph *self)
 {
+    GtkRequisition requisition;
     GtkWidget *widget = GTK_WIDGET(self);
-    widget->requisition.width = 40;
-    widget->requisition.height = 40;
+
+    gtk_widget_get_requisition(widget, &requisition);
+
+    requisition.width = 40;
+    requisition.height = 40;
     self->background = NULL;
     gtk_widget_set_has_window(widget, FALSE);
-    g_signal_connect(GTK_OBJECT(widget), "unrealize", G_CALLBACK(calf_phase_graph_unrealize), (gpointer)self);
+    g_signal_connect(G_OBJECT(widget), "unrealize", G_CALLBACK(calf_phase_graph_unrealize), (gpointer)self);
 }
 
 GtkWidget *

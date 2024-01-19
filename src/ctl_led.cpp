@@ -32,20 +32,22 @@ calf_led_new()
 }
 
 static gboolean
-calf_led_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_led_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_LED(widget));
 
     CalfLed *self = CALF_LED(widget);
-    GdkWindow *window = widget->window;
-    cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(window));
-    
-    int width = widget->allocation.width;
-    int height = widget->allocation.height;
-    int x  = widget->allocation.x;
-    int y  = widget->allocation.y;
-    int ox = widget->style->xthickness;
-    int oy = widget->style->ythickness;
+    GdkWindow *window = gtk_widget_get_window(widget);
+   
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
+    GtkStyle *style = gtk_widget_get_style(widget);
+    int width = allocation.width;
+    int height = allocation.height;
+    int x  = allocation.x;
+    int y  = allocation.y;
+    int ox = style->xthickness;
+    int oy = style->ythickness;
     int sx = width - ox * 2;
     int sy = height - oy * 2;
     int xc = x + width / 2;
@@ -170,13 +172,21 @@ calf_led_expose (GtkWidget *widget, GdkEventExpose *event)
 }
 
 static void
-calf_led_size_request (GtkWidget *widget,
-                           GtkRequisition *requisition)
+calf_led_get_preferred_width (GtkWidget *widget,
+                                gint *minimal_width,
+                                gint *natural_width)
 {
     g_assert(CALF_IS_LED(widget));
-    CalfLed *self = CALF_LED(widget);
-    requisition->width = self->size ? 24 : 19;
-    requisition->height = self->size ? 18 : 14;
+     *minimal_width = *natural_width = CALF_LED(widget)->size ? 24 : 19;
+}
+
+static void
+calf_led_get_preferred_height (GtkWidget *widget,
+                                gint *minimal_height,
+                                gint *natural_height)
+{
+    g_assert(CALF_IS_LED(widget));
+     *minimal_height = *natural_height = CALF_LED(widget)->size ? 18 : 14;
 }
 
 static void
@@ -204,8 +214,9 @@ static void
 calf_led_class_init (CalfLedClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_led_expose;
-    widget_class->size_request = calf_led_size_request;
+    widget_class->draw = calf_led_draw;
+    widget_class->get_preferred_width = calf_led_get_preferred_width;
+    widget_class->get_preferred_height = calf_led_get_preferred_height;
     widget_class->size_allocate = calf_led_size_allocate;
     widget_class->button_press_event = calf_led_button_press;
     gtk_widget_class_install_style_property(
@@ -229,8 +240,10 @@ calf_led_init (CalfLed *self)
     self->size = 0;
     self->led_value = 0.f;
     self->cache_surface = NULL;
-    widget->requisition.width = self->size ? 24 : 19;
-    widget->requisition.height = self->size ? 18 : 14;
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = self->size ? 24 : 19;
+    requisition.height = self->size ? 18 : 14;
     gtk_widget_set_has_window(widget, FALSE);
 }
 
@@ -243,7 +256,7 @@ void calf_led_set_value(CalfLed *led, float value)
         if (led->led_mode >= 2 || (old_value > 0) != (value > 0))
         {
             GtkWidget *widget = GTK_WIDGET (led);
-            if (GTK_WIDGET_REALIZED(widget))
+            if (gtk_widget_get_realized(widget))
                 gtk_widget_queue_draw (widget);
         }
     }

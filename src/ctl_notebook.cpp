@@ -28,7 +28,7 @@ using namespace dsp;
 ///////////////////////////////////////// notebook ///////////////////////////////////////////////
 
 
-#define GTK_NOTEBOOK_PAGE(_glist_)         ((GtkNotebookPage *)((GList *)(_glist_))->data)
+#define GTK_NOTEBOOK_PAGE(_glist_)         ((_GtkNotebookPage *)((GList *)(_glist_))->data)
 struct _GtkNotebookPage
 {
   GtkWidget *child;
@@ -63,25 +63,27 @@ calf_notebook_new()
     return widget;
 }
 static gboolean
-calf_notebook_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_notebook_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_NOTEBOOK(widget));
-    
+   
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
     GtkNotebook *notebook = GTK_NOTEBOOK(widget);
+    GtkStyle *style = gtk_widget_get_style(widget);
     CalfNotebook *nb = CALF_NOTEBOOK(widget);
     
     if (gtk_widget_is_drawable (widget)) {
         
-        GdkWindow *window = widget->window;
-        cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(window));
+        GdkWindow *window = gtk_widget_get_window(widget);
         cairo_pattern_t *pat = NULL;
         
-        int x  = widget->allocation.x;
-        int y  = widget->allocation.y;
-        int sx = widget->allocation.width;
-        int sy = widget->allocation.height;
-        int tx = widget->style->xthickness;
-        int ty = widget->style->ythickness;
+        int x  = allocation.x;
+        int y  = allocation.y;
+        int sx = allocation.width;
+        int sy = allocation.height;
+        int tx = style->xthickness;
+        int ty = style->ythickness;
         int lh = 19;
         int bh = lh + 2 * ty;
         
@@ -93,36 +95,41 @@ calf_notebook_expose (GtkWidget *widget, GdkEventExpose *event)
         cairo_clip(c);
         
         int add = 0;
+
+        _GtkNotebookPage *cur_page = GTK_NOTEBOOK_PAGE(gtk_notebook_get_nth_page(notebook,
+                gtk_notebook_get_current_page(notebook)));
         
-        if (notebook->show_tabs) {
-            GtkNotebookPage *page;
+        if (gtk_notebook_get_show_tabs(notebook)) {
+            _GtkNotebookPage *page;
             GList *pages;
             
             gint sp;
             gtk_widget_style_get(widget, "tab-overlap", &sp, NULL);
             
-            pages = notebook->children;
+            pages = gtk_container_get_children(GTK_CONTAINER(notebook));
             
             int cn = 0;
             while (pages) {
                 page = GTK_NOTEBOOK_PAGE (pages);
                 pages = pages->next;
-                if (page->tab_label->window == event->window &&
+                if (gtk_cairo_should_draw_window (c, gtk_widget_get_window(page->tab_label)) &&
                     gtk_widget_is_drawable (page->tab_label)) {
-                    int lx = page->tab_label->allocation.x;
-                    int lw = page->tab_label->allocation.width;
+                    GtkAllocation allocation;
+                    gtk_widget_get_allocation(widget, &allocation);
+                    int lx = allocation.x;
+                    int lw = allocation.width;
                     
                     // fix the labels position
-                    page->tab_label->allocation.y = y + ty;
-                    page->tab_label->allocation.height = lh;
+                    allocation.y = y + ty;
+                    allocation.height = lh;
                     
                     // draw tab background
                     cairo_rectangle(c, lx - tx, y, lw + 2 * tx, bh);
                     get_base_color(widget, NULL, &r, &g, &b);
-                    cairo_set_source_rgba(c, r,g,b, page != notebook->cur_page ? alpha / 2 : alpha);
+                    cairo_set_source_rgba(c, r,g,b, page != cur_page ? alpha / 2 : alpha);
                     cairo_fill(c);
                     
-                    if (page == notebook->cur_page) {
+                    if (page == cur_page) {
                         // draw tab light
                         get_bg_color(widget, NULL, &r, &g, &b);
                         cairo_rectangle(c, lx - tx + 2, y + 2, lw + 2 * tx - 4, 2);
@@ -139,7 +146,7 @@ calf_notebook_expose (GtkWidget *widget, GdkEventExpose *event)
                     
                     }
                     // draw labels
-                    gtk_container_propagate_expose (GTK_CONTAINER (notebook), page->tab_label, event);
+                    gtk_container_propagate_draw (GTK_CONTAINER (notebook), page->tab_label, c);
                 }
                 cn++;
             }
@@ -177,10 +184,10 @@ calf_notebook_expose (GtkWidget *widget, GdkEventExpose *event)
             cairo_fill_preserve(c);
         }
         // propagate expose to all children
-        if (notebook->cur_page)
-            gtk_container_propagate_expose (GTK_CONTAINER (notebook),
-                notebook->cur_page->child,
-                event);
+        if (cur_page)
+            gtk_container_propagate_draw (GTK_CONTAINER (notebook),
+                cur_page->child,
+                c);
         
         cairo_pattern_destroy(pat);
         cairo_destroy(c);
@@ -200,7 +207,7 @@ static void
 calf_notebook_class_init (CalfNotebookClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_notebook_expose;
+    widget_class->draw = calf_notebook_draw;
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("background-alpha", "Alpha Background", "Alpha of background",
         0.0, 1.0, 0.5, GParamFlags(G_PARAM_READWRITE)));

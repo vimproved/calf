@@ -81,7 +81,7 @@ calf_knob_get_color (CalfKnob *self, float deg, float phase, float start, float 
 }
 
 static gboolean
-calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_knob_draw (GtkWidget *widget, cairo_t *ctx)
 {
     g_assert(CALF_IS_KNOB(widget));
     CalfKnob *self = CALF_KNOB(widget);
@@ -97,7 +97,7 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
         printf("pixbuf: %d x %d\n", iw, ih);
         
     GtkAdjustment *adj = gtk_range_get_adjustment(GTK_RANGE(widget));
-    cairo_t *ctx = gdk_cairo_create(GDK_DRAWABLE(widget->window));
+    GdkWindow *window = gtk_widget_get_window(widget);
     
     float r, g, b;
     GtkStateType state;
@@ -112,9 +112,11 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
     
     if (self->debug > 1)
         printf("gtkrc: rm %.2f | rw %.2f | tm %.2f | tw %.2f | tl %.2f\n", rmargin, rwidth, tmargin, twidth, tlength);
-    
-    double ox   = widget->allocation.x + (widget->allocation.width - iw) / 2;
-    double oy   = widget->allocation.y + (widget->allocation.height - ih) / 2;
+   
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
+    double ox   = allocation.x + (allocation.width - iw) / 2;
+    double oy   = allocation.y + (allocation.height - ih) / 2;
     double size = iw;
     float  rad  = size / 2;
     double xc   = ox + rad;
@@ -142,8 +144,8 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
     cairo_clip(ctx);
     
     // draw background
-    gdk_draw_pixbuf(GDK_DRAWABLE(widget->window), widget->style->fg_gc[0], pixbuf,
-                    0, 0, ox, oy, iw, ih, GDK_RGB_DITHER_NORMAL, 0, 0);
+    gdk_cairo_set_source_pixbuf(ctx, pixbuf, ox, oy);
+    cairo_paint(ctx);
     
     switch (self->type) {
         default:
@@ -177,7 +179,7 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
     tick  = 0;
     nend  = 0.;
     deg = last = start;
-    phase = (adj->value - adj->lower) * base / (adj->upper - adj->lower) + start;
+    phase = (gtk_adjustment_get_value(adj) - gtk_adjustment_get_lower(adj)) * base / (gtk_adjustment_get_upper(adj) - gtk_adjustment_get_lower(adj)) + start;
     
     // draw pin
     state = GTK_STATE_ACTIVE;
@@ -283,15 +285,19 @@ calf_knob_expose (GtkWidget *widget, GdkEventExpose *event)
 }
 
 static void
-calf_knob_size_request (GtkWidget *widget,
-                           GtkRequisition *requisition)
+calf_knob_get_preferred_width(GtkWidget *widget,
+                                gint *minimal_width,
+                                gint *natural_width)
 {
-    g_assert(CALF_IS_KNOB(widget));
-    CalfKnob *self = CALF_KNOB(widget);
-    if (!self->knob_image)
-        return;
-    requisition->width  = gdk_pixbuf_get_width(self->knob_image);
-    requisition->height = gdk_pixbuf_get_height(self->knob_image);
+    *minimal_width = *natural_width = gdk_pixbuf_get_width(CALF_KNOB(widget)->knob_image);
+}
+
+static void
+calf_knob_get_preferred_height(GtkWidget *widget,
+                                gint *minimal_height,
+                                gint *natural_height)
+{
+    *minimal_height = *natural_height = gdk_pixbuf_get_height(CALF_KNOB(widget)->knob_image);
 }
 
 void
@@ -337,9 +343,9 @@ calf_knob_incr (GtkWidget *widget, int dir_down)
     CalfKnob *self = CALF_KNOB(widget);
     GtkAdjustment *adj = gtk_range_get_adjustment(GTK_RANGE(widget));
 
-    int oldstep = (int)(0.5f + (adj->value - adj->lower) / adj->step_increment);
+    int oldstep = (int)(0.5f + (gtk_adjustment_get_value(adj) - gtk_adjustment_get_lower(adj)) / gtk_adjustment_get_step_increment(adj));
     int step;
-    int nsteps = (int)(0.5f + (adj->upper - adj->lower) / adj->step_increment); // less 1 actually
+    int nsteps = (int)(0.5f + (gtk_adjustment_get_value(adj) - gtk_adjustment_get_lower(adj)) / gtk_adjustment_get_step_increment(adj)); // less 1 actually
     if (dir_down)
         step = oldstep - 1;
     else
@@ -350,7 +356,7 @@ calf_knob_incr (GtkWidget *widget, int dir_down)
         step = nsteps - (nsteps - step) % nsteps;
 
     // trying to reduce error cumulation here, by counting from lowest or from highest
-    float value = adj->lower + step * double(adj->upper - adj->lower) / nsteps;
+    float value = gtk_adjustment_get_lower(adj) + step * double(gtk_adjustment_get_upper(adj) - gtk_adjustment_get_lower(adj)) / nsteps;
     gtk_range_set_value(GTK_RANGE(widget), value);
     // printf("step %d:%d nsteps %d value %f:%f\n", oldstep, step, nsteps, oldvalue, value);
 }
@@ -365,24 +371,24 @@ calf_knob_key_press (GtkWidget *widget, GdkEventKey *event)
     gtk_widget_queue_draw(widget);
     switch(event->keyval)
     {
-        case GDK_Home:
-            gtk_range_set_value(GTK_RANGE(widget), adj->lower);
+        case GDK_KEY_Home:
+            gtk_range_set_value(GTK_RANGE(widget), gtk_adjustment_get_lower(adj));
             return TRUE;
 
-        case GDK_End:
-            gtk_range_set_value(GTK_RANGE(widget), adj->upper);
+        case GDK_KEY_End:
+            gtk_range_set_value(GTK_RANGE(widget), gtk_adjustment_get_upper(adj));
             return TRUE;
 
-        case GDK_Up:
+        case GDK_KEY_Up:
             calf_knob_incr(widget, 0);
             return TRUE;
 
-        case GDK_Down:
+        case GDK_KEY_Down:
             calf_knob_incr(widget, 1);
             return TRUE;
             
-        case GDK_Shift_L:
-        case GDK_Shift_R:
+        case GDK_KEY_Shift_L:
+        case GDK_KEY_Shift_R:
             self->start_value = gtk_range_get_value(GTK_RANGE(widget));
             self->start_y = self->last_y;
             return TRUE;
@@ -397,7 +403,7 @@ calf_knob_key_release (GtkWidget *widget, GdkEventKey *event)
     g_assert(CALF_IS_KNOB(widget));
     CalfKnob *self = CALF_KNOB(widget);
 
-    if(event->keyval == GDK_Shift_L || event->keyval == GDK_Shift_R)
+    if(event->keyval == GDK_KEY_Shift_L || event->keyval == GDK_KEY_Shift_R)
     {
         self->start_value = gtk_range_get_value(GTK_RANGE(widget));
         self->start_y = self->last_y;
@@ -434,7 +440,7 @@ calf_knob_button_release (GtkWidget *widget, GdkEventButton *event)
 {
     g_assert(CALF_IS_KNOB(widget));
 
-    if (GTK_WIDGET_HAS_GRAB(widget))
+    if (gtk_widget_has_grab(widget))
         gtk_grab_remove(widget);
     gtk_widget_set_state(widget, GTK_STATE_NORMAL);
     gtk_widget_queue_draw(widget);
@@ -476,7 +482,7 @@ calf_knob_pointer_motion (GtkWidget *widget, GdkEventMotion *event)
     float scale = (event->state & GDK_SHIFT_MASK) ? 2500 : 250;
     gboolean moved = FALSE;
     
-    if (GTK_WIDGET_HAS_GRAB(widget)) 
+    if (gtk_widget_has_grab(widget)) 
     {
         if (self->type == 3)
         {
@@ -509,8 +515,9 @@ calf_knob_class_init (CalfKnobClass *klass)
 {
     // GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_knob_expose;
-    widget_class->size_request = calf_knob_size_request;
+    widget_class->draw = calf_knob_draw;
+    widget_class->get_preferred_width = calf_knob_get_preferred_width;
+    widget_class->get_preferred_height = calf_knob_get_preferred_height;
     widget_class->enter_notify_event = calf_knob_enter;
     widget_class->leave_notify_event = calf_knob_leave;
     widget_class->button_press_event = calf_knob_button_press;
@@ -547,9 +554,11 @@ static void
 calf_knob_init (CalfKnob *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
-    GTK_WIDGET_SET_FLAGS (GTK_WIDGET(self), GTK_CAN_FOCUS);
-    widget->requisition.width = 40;
-    widget->requisition.height = 40;
+    gtk_widget_set_can_focus (GTK_WIDGET(self), TRUE);
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = 40;
+    requisition.height = 40;
     self->knob_image = NULL;
 }
 
@@ -572,7 +581,7 @@ GtkWidget *calf_knob_new_with_adjustment(GtkAdjustment *_adjustment)
     GtkWidget *widget = GTK_WIDGET( g_object_new (CALF_TYPE_KNOB, NULL ));
     if (widget) {
         gtk_range_set_adjustment(GTK_RANGE(widget), _adjustment);
-        g_signal_connect(GTK_OBJECT(widget), "value-changed", G_CALLBACK(calf_knob_value_changed), widget);
+        g_signal_connect(G_OBJECT(widget), "value-changed", G_CALLBACK(calf_knob_value_changed), widget);
     }
     return widget;
 }

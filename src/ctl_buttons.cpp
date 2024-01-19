@@ -29,34 +29,44 @@ using namespace dsp;
 
 
 static gboolean
-calf_toggle_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_toggle_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_TOGGLE(widget));
     CalfToggle *self = CALF_TOGGLE(widget);
     if (!self->toggle_image)
         return FALSE;
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
     float off = floor(.5 + gtk_range_get_value(GTK_RANGE(widget)));
     float pw  = gdk_pixbuf_get_width(self->toggle_image);
     float ph  = gdk_pixbuf_get_height(self->toggle_image);
-    float wcx = widget->allocation.x + widget->allocation.width / 2;
-    float wcy = widget->allocation.y + widget->allocation.height / 2;
+    float wcx = allocation.x + allocation.width / 2;
+    float wcy = allocation.y + allocation.height / 2;
     float pcx = pw / 2;
     float pcy = ph / 4;
     float sy = off * ph / 2;
     float x = wcx - pcx;
     float y = wcy - pcy;
-    gdk_draw_pixbuf(GDK_DRAWABLE(widget->window), widget->style->fg_gc[0],
-                    self->toggle_image, 0, sy, x, y, pw, ph / 2, GDK_RGB_DITHER_NORMAL, 0, 0);
+    gdk_cairo_set_source_pixbuf(c, self->toggle_image, x, y);
+    cairo_paint(c);
+    cairo_destroy(c);
     return TRUE;
 }
 
 static void
-calf_toggle_size_request (GtkWidget *widget,
-                           GtkRequisition *requisition)
+calf_toggle_get_preferred_width (GtkWidget *widget,
+                                    gint *minimal_width,
+                                    gint *natural_width)
 {
-    g_assert(CALF_IS_TOGGLE(widget));
-    requisition->width  = widget->style->xthickness;
-    requisition->height = widget->style->ythickness;
+    *minimal_width = *natural_width = gtk_widget_get_style(widget)->xthickness;
+}
+
+static void
+calf_toggle_get_preferred_height (GtkWidget *widget,
+                                    gint *minimal_height,
+                                    gint *natural_height)
+{
+    *minimal_height = *natural_height = gtk_widget_get_style(widget)->ythickness;
 }
 
 static gboolean
@@ -64,11 +74,11 @@ calf_toggle_button_press (GtkWidget *widget, GdkEventButton *event)
 {
     g_assert(CALF_IS_TOGGLE(widget));
     GtkAdjustment *adj = gtk_range_get_adjustment(GTK_RANGE(widget));
-    if (gtk_range_get_value(GTK_RANGE(widget)) == adj->lower)
+    if (gtk_range_get_value(GTK_RANGE(widget)) == gtk_adjustment_get_lower(adj))
     {
-        gtk_range_set_value(GTK_RANGE(widget), adj->upper);
+        gtk_range_set_value(GTK_RANGE(widget), gtk_adjustment_get_upper(adj));
     } else {
-        gtk_range_set_value(GTK_RANGE(widget), adj->lower);
+        gtk_range_set_value(GTK_RANGE(widget), gtk_adjustment_get_lower(adj));
     }
     return TRUE;
 }
@@ -78,9 +88,9 @@ calf_toggle_key_press (GtkWidget *widget, GdkEventKey *event)
 {
     switch(event->keyval)
     {
-        case GDK_Return:
-        case GDK_KP_Enter:
-        case GDK_space:
+        case GDK_KEY_Return:
+        case GDK_KEY_KP_Enter:
+        case GDK_KEY_space:
             return calf_toggle_button_press(widget, NULL);
     }
     return FALSE;
@@ -91,8 +101,9 @@ calf_toggle_class_init (CalfToggleClass *klass)
 {
     // GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_toggle_expose;
-    widget_class->size_request = calf_toggle_size_request;
+    widget_class->draw = calf_toggle_draw;
+    widget_class->get_preferred_width = calf_toggle_get_preferred_width;
+    widget_class->get_preferred_height = calf_toggle_get_preferred_height;
     widget_class->button_press_event = calf_toggle_button_press;
     widget_class->key_press_event = calf_toggle_key_press;
 }
@@ -101,9 +112,11 @@ static void
 calf_toggle_init (CalfToggle *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
-    GTK_WIDGET_SET_FLAGS (GTK_WIDGET(self), GTK_CAN_FOCUS);
-    widget->requisition.width = 30;
-    widget->requisition.height = 20;
+    gtk_widget_set_can_focus (GTK_WIDGET(self), TRUE);
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = 30;
+    requisition.height = 20;
     self->size = 1;
 }
 
@@ -134,13 +147,15 @@ calf_toggle_new()
 
 static gboolean calf_toggle_value_changed(gpointer obj)
 {
+    GtkAllocation allocation;
     GtkWidget *widget = (GtkWidget *)obj;
     CalfToggle *self = CALF_TOGGLE(widget);
     float sx = self->size ? self->size : 1.f / 3.f * 2.f;
     float sy = self->size ? self->size : 1;
+    gtk_widget_get_allocation(widget, &allocation);
     gtk_widget_queue_draw_area(widget,
-                               widget->allocation.x - sx * 2,
-                               widget->allocation.y - sy * 3,
+                               allocation.x - sx * 2,
+                               allocation.y - sy * 3,
                                self->size * 34,
                                self->size * 26);
     return FALSE;
@@ -151,7 +166,7 @@ GtkWidget *calf_toggle_new_with_adjustment(GtkAdjustment *_adjustment)
     GtkWidget *widget = GTK_WIDGET( g_object_new (CALF_TYPE_TOGGLE, NULL ));
     if (widget) {
         gtk_range_set_adjustment(GTK_RANGE(widget), _adjustment);
-        g_signal_connect(GTK_OBJECT(widget), "value-changed", G_CALLBACK(calf_toggle_value_changed), widget);
+        g_signal_connect(G_OBJECT(widget), "value-changed", G_CALLBACK(calf_toggle_value_changed), widget);
     }
     return widget;
 }
@@ -204,22 +219,24 @@ calf_button_new(const gchar *label)
     return widget;
 }
 static gboolean
-calf_button_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_button_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_BUTTON(widget) || CALF_IS_TOGGLE_BUTTON(widget) || CALF_IS_RADIO_BUTTON(widget));
     
     if (gtk_widget_is_drawable (widget)) {
-        
-        GdkWindow *window    = widget->window;
-        GtkWidget *child     = GTK_BIN (widget)->child;
-        cairo_t *c           = gdk_cairo_create(GDK_DRAWABLE(window));
-        
-        int x  = widget->allocation.x;
-        int y  = widget->allocation.y;
-        int sx = widget->allocation.width;
-        int sy = widget->allocation.height;
-        int ox = widget->style->xthickness;
-        int oy = widget->style->ythickness;
+       
+        GtkAllocation allocation;
+        GtkStyle *style = gtk_widget_get_style(widget);
+        GdkWindow *window    = gtk_widget_get_window(widget);
+        GtkWidget *child     = gtk_bin_get_child(GTK_BIN (widget));
+       
+        gtk_widget_get_allocation(widget, &allocation);
+        int x  = allocation.x;
+        int y  = allocation.y;
+        int sx = allocation.width;
+        int sy = allocation.height;
+        int ox = style->xthickness;
+        int oy = style->ythickness;
         int bx = x + ox + 1;
         int by = y + oy + 1;
         int bw = sx - 2 * ox - 2;
@@ -257,9 +274,9 @@ calf_button_expose (GtkWidget *widget, GdkEventExpose *event)
             gtk_widget_style_get(widget, "indicator", &pinh, NULL);
             get_text_color(widget, NULL, &r, &g, &b);
             float a;
-            if (widget->state == GTK_STATE_PRELIGHT)
+            if (gtk_widget_get_state(widget) == GTK_STATE_PRELIGHT)
                 gtk_widget_style_get(widget, "alpha-prelight", &a, NULL);
-            else if (widget->state == GTK_STATE_ACTIVE)
+            else if (gtk_widget_get_state(widget) == GTK_STATE_ACTIVE)
                 gtk_widget_style_get(widget, "alpha-active", &a, NULL);
             else
                 gtk_widget_style_get(widget, "alpha-normal", &a, NULL);
@@ -270,7 +287,7 @@ calf_button_expose (GtkWidget *widget, GdkEventExpose *event)
         }
         
         cairo_destroy(c);
-        gtk_container_propagate_expose (GTK_CONTAINER (widget), child, event);
+        gtk_container_propagate_draw (GTK_CONTAINER (widget), child, c);
     }
     return FALSE;
 }
@@ -279,7 +296,7 @@ static void
 calf_button_class_init (CalfButtonClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_button_expose;
+    widget_class->draw = calf_button_draw;
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("border-radius", "Border Radius", "Generate round edges",
         0, 24, 4, GParamFlags(G_PARAM_READWRITE)));
@@ -304,8 +321,10 @@ static void
 calf_button_init (CalfButton *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
-    widget->requisition.width = 40;
-    widget->requisition.height = 20;
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = 40;
+    requisition.height = 20;
 }
 
 GType
@@ -359,7 +378,7 @@ static void
 calf_toggle_button_class_init (CalfToggleButtonClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_button_expose;
+    widget_class->draw = calf_button_draw;
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("border-radius", "Border Radius", "Generate round edges",
         0, 24, 4, GParamFlags(G_PARAM_READWRITE)));
@@ -387,8 +406,10 @@ static void
 calf_toggle_button_init (CalfToggleButton *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
-    widget->requisition.width = 40;
-    widget->requisition.height = 20;
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = 40;
+    requisition.height = 20;
 }
 
 GType
@@ -441,7 +462,7 @@ static void
 calf_radio_button_class_init (CalfRadioButtonClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_button_expose;
+    widget_class->draw = calf_button_draw;
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("border-radius", "Border Radius", "Generate round edges",
         0, 24, 4, GParamFlags(G_PARAM_READWRITE)));
@@ -469,8 +490,10 @@ static void
 calf_radio_button_init (CalfRadioButton *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
-    widget->requisition.width = 40;
-    widget->requisition.height = 20;
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = 40;
+    requisition.height = 20;
 }
 
 GType
@@ -519,29 +542,25 @@ calf_tap_button_new()
 }
 
 static gboolean
-calf_tap_button_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_tap_button_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_TAP_BUTTON(widget));
     CalfTapButton *self = CALF_TAP_BUTTON(widget);
     
     if (!self->image[self->state])
         return FALSE;
+
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
         
     int width = gdk_pixbuf_get_width(self->image[0]);
     int height = gdk_pixbuf_get_height(self->image[0]);
-    int x = widget->allocation.x + widget->allocation.width / 2 - width / 2;
-    int y = widget->allocation.y + widget->allocation.height / 2 - height / 2;
+    int x = allocation.x + allocation.width / 2 - width / 2;
+    int y = allocation.y + allocation.height / 2 - height / 2;
     
-    gdk_draw_pixbuf(GDK_DRAWABLE(widget->window),
-                    widget->style->fg_gc[0],
-                    self->image[self->state],
-                    0,
-                    0,
-                    x,
-                    y,
-                    width,
-                    height,
-                    GDK_RGB_DITHER_NORMAL, 0, 0);
+    gdk_cairo_set_source_pixbuf(c, self->image[self->state], x, y);
+    cairo_paint(c);
+    cairo_destroy(c);
     return TRUE;
 }
 
@@ -549,28 +568,39 @@ void
 calf_tap_button_set_pixbufs (CalfTapButton *self, GdkPixbuf *image1, GdkPixbuf *image2, GdkPixbuf *image3)
 {
     GtkWidget *widget = GTK_WIDGET(self);
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
     self->image[0] = image1;
     self->image[1] = image2;
     self->image[2] = image3;
-    widget->requisition.width = gdk_pixbuf_get_width(self->image[0]);
-    widget->requisition.height = gdk_pixbuf_get_height(self->image[0]);
+    requisition.width = gdk_pixbuf_get_width(self->image[0]);
+    requisition.height = gdk_pixbuf_get_height(self->image[0]);
     gtk_widget_queue_resize(widget);
 }
 
 static void
-calf_tap_button_size_request (GtkWidget *widget,
-                           GtkRequisition *requisition)
+calf_tap_button_get_preferred_width (GtkWidget *widget,
+                                        gint *minimal_width,
+                                        gint *natural_width)
 {
-    g_assert(CALF_IS_TAP_BUTTON(widget));
-    requisition->width  = 70;
-    requisition->height = 70;
+    *minimal_width = *natural_width = 70;
 }
+
+static void
+calf_tap_button_get_preferred_height (GtkWidget *widget,
+                                        gint *minimal_height,
+                                        gint *natural_height)
+{
+    *minimal_height = *natural_height = 70;
+}
+
 static void
 calf_tap_button_class_init (CalfTapButtonClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_tap_button_expose;
-    widget_class->size_request = calf_tap_button_size_request;
+    widget_class->draw = calf_tap_button_draw;
+    widget_class->get_preferred_width = calf_tap_button_get_preferred_width;
+    widget_class->get_preferred_height = calf_tap_button_get_preferred_height;
 }
 static void
 calf_tap_button_init (CalfTapButton *self)

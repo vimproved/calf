@@ -37,24 +37,25 @@ calf_frame_new(const char *label)
     return widget;
 }
 static gboolean
-calf_frame_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_frame_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_FRAME(widget));
     if (gtk_widget_is_drawable (widget)) {
         
-        GdkWindow *window = widget->window;
-        cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(window));
+        GdkWindow *window = gtk_widget_get_window(widget);
         cairo_text_extents_t extents;
-        
-        int ox = widget->allocation.x;
-        int oy = widget->allocation.y;
-        int sx = widget->allocation.width;
-        int sy = widget->allocation.height;
+       
+        GtkAllocation allocation;
+        gtk_widget_get_allocation(widget, &allocation);
+        int ox = allocation.x;
+        int oy = allocation.y;
+        int sx = allocation.width;
+        int sy = allocation.height;
         
         float rad;
         gtk_widget_style_get(widget, "border-radius", &rad, NULL);
     
-        double pad  = widget->style->xthickness;
+        double pad  = gtk_widget_get_style(widget)->xthickness;
         double txp  = 4;
         double m    = 0.5;
         double size = 10;
@@ -108,9 +109,9 @@ calf_frame_expose (GtkWidget *widget, GdkEventExpose *event)
         cairo_destroy(c);
     }
     if (gtk_bin_get_child(GTK_BIN(widget))) {
-        gtk_container_propagate_expose(GTK_CONTAINER(widget),
+        gtk_container_propagate_draw(GTK_CONTAINER(widget),
                                        gtk_bin_get_child(GTK_BIN(widget)),
-                                       event);
+                                       c);
     }
     return FALSE;
 }
@@ -119,7 +120,7 @@ static void
 calf_frame_class_init (CalfFrameClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_frame_expose;
+    widget_class->draw = calf_frame_draw;
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("border-radius", "Border Radius", "Generate round edges",
         0, 24, 4, GParamFlags(G_PARAM_READWRITE)));
@@ -129,8 +130,10 @@ static void
 calf_frame_init (CalfFrame *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
-    widget->requisition.width = 40;
-    widget->requisition.height = 40;
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = 40;
+    requisition.height = 40;
 }
 
 GType

@@ -28,17 +28,18 @@
 #include <sys/time.h>
 
 static gboolean
-calf_tube_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_tube_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_TUBE(widget));
     
     CalfTube  *self   = CALF_TUBE(widget);
-    GdkWindow *window = widget->window;
+    GdkWindow *window = gtk_widget_get_window(widget);
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
     GtkStyle  *style  = gtk_widget_get_style(widget);
-    cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(window));
     
     int ox = 4, oy = 4, inner = 1, pad;
-    int sx = widget->allocation.width - (ox * 2), sy = widget->allocation.height - (oy * 2);
+    int sx = allocation.width - (ox * 2), sy = allocation.height - (oy * 2);
     
     if( self->cache_surface == NULL ) {
         // looks like its either first call or the widget has been resized.
@@ -46,8 +47,8 @@ calf_tube_expose (GtkWidget *widget, GdkEventExpose *event)
         cairo_surface_t *window_surface = cairo_get_target( c );
         self->cache_surface = cairo_surface_create_similar( window_surface, 
                                   CAIRO_CONTENT_COLOR,
-                                  widget->allocation.width,
-                                  widget->allocation.height );
+                                  allocation.width,
+                                  allocation.height );
 
         // And render the meterstuff again.
         cairo_t *cache_cr = cairo_create( self->cache_surface );
@@ -107,7 +108,7 @@ calf_tube_expose (GtkWidget *widget, GdkEventExpose *event)
                 }
                 break;
         }
-        cairo_set_source_surface (cache_cr, image, widget->allocation.width / 2 - sx / 2 + inner, widget->allocation.height / 2 - sy / 2 + inner);
+        cairo_set_source_surface (cache_cr, image, allocation.width / 2 - sx / 2 + inner, allocation.height / 2 - sy / 2 + inner);
         cairo_paint (cache_cr);
         cairo_surface_destroy (image);
         cairo_destroy( cache_cr );
@@ -187,18 +188,21 @@ calf_tube_size_request (GtkWidget *widget,
 {
     g_assert(CALF_IS_TUBE(widget));
 
+    GtkRequisition widget_requisition;
+    gtk_widget_get_requisition(widget, &widget_requisition);
+
     CalfTube *self = CALF_TUBE(widget);
     switch(self->direction) {
         case 1:
             switch(self->size) {
                 case 1:
-                    widget->requisition.width = 82;
-                    widget->requisition.height = 130;
+                    widget_requisition.width = 82;
+                    widget_requisition.height = 130;
                     break;
                 default:
                 case 2:
-                    widget->requisition.width = 130;
-                    widget->requisition.height = 210;
+                    widget_requisition.width = 130;
+                    widget_requisition.height = 210;
                     break;
             }
             break;
@@ -206,17 +210,41 @@ calf_tube_size_request (GtkWidget *widget,
         case 2:
             switch(self->size) {
                 case 1:
-                    widget->requisition.width = 130;
-                    widget->requisition.height = 82;
+                    widget_requisition.width = 130;
+                    widget_requisition.height = 82;
                     break;
                 default:
                 case 2:
-                    widget->requisition.width = 210;
-                    widget->requisition.height = 130;
+                    widget_requisition.width = 210;
+                    widget_requisition.height = 130;
                     break;
             }
             break;
     }
+}
+
+static void
+calf_tube_get_preferred_width (GtkWidget *widget,
+                                gint *minimal_width,
+                                gint *natural_width)
+{
+    GtkRequisition requisition;
+
+    calf_tube_size_request(widget, &requisition);
+
+    *minimal_width = *natural_width = requisition.width;
+}
+
+static void
+calf_tube_get_preferred_height (GtkWidget *widget,
+                                gint *minimal_height,
+                                gint *natural_height)
+{
+    GtkRequisition requisition;
+
+    calf_tube_size_request(widget, &requisition);
+
+    *minimal_height = *natural_height = requisition.height;
 }
 
 static void
@@ -240,8 +268,9 @@ calf_tube_class_init (CalfTubeClass *klass)
 {
     // GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_tube_expose;
-    widget_class->size_request = calf_tube_size_request;
+    widget_class->draw = calf_tube_draw;
+    widget_class->get_preferred_width = calf_tube_get_preferred_width;
+    widget_class->get_preferred_height = calf_tube_get_preferred_height;
     widget_class->size_allocate = calf_tube_size_allocate;
 }
 
@@ -249,18 +278,20 @@ static void
 calf_tube_init (CalfTube *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
-    GTK_WIDGET_SET_FLAGS (GTK_WIDGET(self), GTK_CAN_FOCUS);
+    gtk_widget_set_can_focus (GTK_WIDGET(self), TRUE);
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
     switch(self->direction) {
         case 1:
             switch(self->size) {
                 case 1:
-                    widget->requisition.width = 82;
-                    widget->requisition.height = 130;
+                    requisition.width = 82;
+                    requisition.height = 130;
                     break;
                 default:
                 case 2:
-                    widget->requisition.width = 130;
-                    widget->requisition.height = 210;
+                    requisition.width = 130;
+                    requisition.height = 210;
                     break;
             }
             break;
@@ -268,13 +299,13 @@ calf_tube_init (CalfTube *self)
         case 2:
             switch(self->size) {
                 case 1:
-                    widget->requisition.width = 130;
-                    widget->requisition.height = 82;
+                    requisition.width = 130;
+                    requisition.height = 82;
                     break;
                 default:
                 case 2:
-                    widget->requisition.width = 210;
-                    widget->requisition.height = 130;
+                    requisition.width = 210;
+                    requisition.height = 130;
                     break;
             }
             break;

@@ -36,21 +36,24 @@ calf_meter_scale_new()
     return widget;
 }
 static gboolean
-calf_meter_scale_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_meter_scale_draw (GtkWidget *widget, cairo_t *cr)
 {
     g_assert(CALF_IS_METER_SCALE(widget));
     CalfMeterScale *ms = CALF_METER_SCALE(widget);
     if (gtk_widget_is_drawable (widget)) {
         
-        GdkWindow *window = widget->window;
-        cairo_t *cr = gdk_cairo_create(GDK_DRAWABLE(window));
+        GdkWindow *window = gtk_widget_get_window(widget);
+        GtkAllocation allocation;
+        GtkStyle *style = gtk_widget_get_style(widget);
         cairo_text_extents_t extents;
+
+        gtk_widget_get_allocation(widget, &allocation);
         
-        double ox = widget->allocation.x;
-        double oy = widget->allocation.y;
-        double width  = widget->allocation.width;
-        double height = widget->allocation.height;
-        double xthick = widget->style->xthickness;
+        double ox = allocation.x;
+        double oy = allocation.y;
+        double width  = allocation.width;
+        double height = allocation.height;
+        double xthick = style->xthickness;
         double text_w = 0, bar_x = 0, bar_width = 0, bar_y = 0;
         float r, g, b;
         double text_m = 3;
@@ -148,8 +151,9 @@ calf_meter_scale_size_request (GtkWidget *widget,
 {
     g_assert(CALF_IS_METER_SCALE(widget));
     CalfMeterScale *self = CALF_METER_SCALE(widget);
+    GtkStyle *style = gtk_widget_get_style(widget);
     
-    double ythick = widget->style->ythickness;
+    double ythick = style->ythickness;
     double text_h = 8; // FIXME: Pango layout should be used here
     double dot_s  = 2;
     double dot_m  = 2;
@@ -158,20 +162,47 @@ calf_meter_scale_size_request (GtkWidget *widget,
 }
 
 static void
+calf_meter_scale_get_preferred_width (GtkWidget *widget,
+                               gint      *minimal_width,
+                               gint      *natural_width)
+{
+    GtkRequisition requisition;
+    
+    calf_meter_scale_size_request (widget, &requisition);
+    
+    *minimal_width = *natural_width = requisition.width;
+}
+
+static void
+calf_meter_scale_get_preferred_height (GtkWidget *widget,
+                                gint      *minimal_height,
+                                gint      *natural_height)
+{
+    GtkRequisition requisition;
+    
+    calf_meter_scale_size_request (widget, &requisition);
+    
+    *minimal_height = *natural_height = requisition.height;
+}
+
+static void
 calf_meter_scale_class_init (CalfMeterScaleClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_meter_scale_expose;
-    widget_class->size_request = calf_meter_scale_size_request;
+    widget_class->draw = calf_meter_scale_draw;
+    widget_class->get_preferred_width = calf_meter_scale_get_preferred_width;
+    widget_class->get_preferred_height = calf_meter_scale_get_preferred_height;
 }
 
 static void
 calf_meter_scale_init (CalfMeterScale *self)
 {
+    GtkRequisition requisition;
     GtkWidget *widget = GTK_WIDGET(self);
+    gtk_widget_get_requisition(widget, &requisition);
     gtk_widget_set_has_window(widget, FALSE);
-    widget->requisition.width = 40;
-    widget->requisition.height = 12;
+    requisition.width = 40;
+    requisition.height = 12;
     self->mode     = VU_STANDARD;
     self->position = 0;
     self->dots     = 0;

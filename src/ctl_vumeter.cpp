@@ -26,27 +26,30 @@
 
 
 static gboolean
-calf_vumeter_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_vumeter_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_VUMETER(widget));
 
     CalfVUMeter *vu = CALF_VUMETER(widget);
-    cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(widget->window));
     
     float r, g, b;
+
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
+    GtkStyle *style = gtk_widget_get_style(widget);
     
-    int x = widget->allocation.x;
-    int y = widget->allocation.y;
-    int width = widget->allocation.width;
-    int height = widget->allocation.height;
-    int border_x = widget->style->xthickness;
-    int border_y = widget->style->ythickness;
+    int x = allocation.x;
+    int y = allocation.y;
+    int width = allocation.width;
+    int height = allocation.height;
+    int border_x = style->xthickness;
+    int border_y = style->ythickness;
     int space_x = 1; int space_y = 1; // inner border around led bar
     int led = 2; // single LED size
     int led_m = 1; // margin between LED
     int led_s = led + led_m; // size of LED with margin
-    int led_x = widget->style->xthickness;
-    int led_y = widget->style->ythickness; // position of first LED
+    int led_x = style->xthickness;
+    int led_y = style->ythickness; // position of first LED
     int led_w = width - 2 * led_x + led_m; // width of LED bar w/o text calc (additional led margin, is removed later; used for filling the led bar completely w/o margin gap)
     int led_h = height - 2 * led_y; // height of LED bar w/o text calc
     int text_x = 0; int text_y = 0;
@@ -373,13 +376,21 @@ calf_vumeter_expose (GtkWidget *widget, GdkEventExpose *event)
 }
 
 static void
-calf_vumeter_size_request (GtkWidget *widget,
-                           GtkRequisition *requisition)
+calf_vumeter_get_preferred_width (GtkWidget *widget,
+                                    gint *minimal_width,
+                                    gint *natural_width)
 {
     g_assert(CALF_IS_VUMETER(widget));
-    CalfVUMeter *self = CALF_VUMETER(widget);
-    requisition->width = self->vumeter_width;
-    requisition->height = self->vumeter_height;
+    *minimal_width = *natural_width = CALF_VUMETER(widget)->vumeter_width;
+}
+
+static void
+calf_vumeter_get_preferred_height (GtkWidget *widget,
+                                    gint *minimal_height,
+                                    gint *natural_height)
+{
+    g_assert(CALF_IS_VUMETER(widget));
+    *minimal_height = *natural_height = CALF_VUMETER(widget)->vumeter_height;
 }
 
 static void
@@ -411,8 +422,9 @@ static void
 calf_vumeter_class_init (CalfVUMeterClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_vumeter_expose;
-    widget_class->size_request = calf_vumeter_size_request;
+    widget_class->draw = calf_vumeter_draw;
+    widget_class->get_preferred_width = calf_vumeter_get_preferred_width;
+    widget_class->get_preferred_height = calf_vumeter_get_preferred_height;
     widget_class->size_allocate = calf_vumeter_size_allocate;
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("border-radius", "Border Radius", "Generate round edges",
@@ -430,8 +442,10 @@ calf_vumeter_init (CalfVUMeter *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
     //GTK_WIDGET_SET_FLAGS (widget, GTK_NO_WINDOW);
-    widget->requisition.width =  self->vumeter_width;
-    widget->requisition.height = self->vumeter_height;
+    GtkRequisition requisition;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width =  self->vumeter_width;
+    requisition.height = self->vumeter_height;
     self->cache_surface = NULL;
     self->falling = false;
     self->holding = false;
@@ -439,7 +453,7 @@ calf_vumeter_init (CalfVUMeter *self)
     self->disp_value = 0.f;
     self->value = 0.f;
     gtk_widget_set_has_window(widget, FALSE);
-    g_signal_connect(GTK_OBJECT(widget), "unrealize", G_CALLBACK(calf_vumeter_unrealize), (gpointer)self);
+    g_signal_connect(G_OBJECT(widget), "unrealize", G_CALLBACK(calf_vumeter_unrealize), (gpointer)self);
 }
 
 GtkWidget *

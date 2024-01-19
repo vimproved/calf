@@ -101,22 +101,24 @@ static void calf_tuner_draw_dot(cairo_t * ctx, float cents, int sx, int sy, int 
 }
 
 static gboolean
-calf_tuner_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_tuner_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_TUNER(widget));
     CalfTuner *tuner = CALF_TUNER(widget);
+    GtkAllocation allocation;
+
+    gtk_widget_get_allocation(widget, &allocation);
     
     //printf("%d %f\n", tuner->note, tuner->cents);
     
     // dimensions
     int ox = 5, oy = 5;
-    int sx = widget->allocation.width - ox * 2, sy = widget->allocation.height - oy * 2;
+    int sx = allocation.width - ox * 2, sy = allocation.height - oy * 2;
     int marg = 10;
     int fpt  = 9;
     float fsize = fpt * sy / 25; // 9pt @ 25px height
     
     // cairo initialization stuff
-    cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(widget->window));
     cairo_t *ctx_back;
     
     if( tuner->background == NULL ) {
@@ -125,8 +127,8 @@ calf_tuner_expose (GtkWidget *widget, GdkEventExpose *event)
         cairo_surface_t *window_surface = cairo_get_target(c);
         tuner->background = cairo_surface_create_similar(window_surface, 
                                   CAIRO_CONTENT_COLOR,
-                                  widget->allocation.width,
-                                  widget->allocation.height );
+                                  allocation.width,
+                                  allocation.height );
         
         // ...and draw some bling bling onto it...
         ctx_back = cairo_create(tuner->background);
@@ -213,20 +215,48 @@ calf_tuner_size_allocate (GtkWidget *widget,
 {
     g_assert(CALF_IS_TUNER(widget));
     CalfTuner *lg = CALF_TUNER(widget);
+    GtkAllocation widget_allocation;
+
+    gtk_widget_get_allocation(widget, &widget_allocation);
 
     if(lg->background)
         cairo_surface_destroy(lg->background);
     lg->background = NULL;
     
-    widget->allocation = *allocation;
+    widget_allocation = *allocation;
+}
+
+static void
+calf_tuner_get_preferred_width (GtkWidget *widget,
+                                gint *minimal_width,
+                                gint *natural_width)
+{
+    GtkRequisition requisition;
+
+    calf_tuner_size_request (widget, &requisition);
+
+    *minimal_width = *natural_width = requisition.width;
+}
+
+static void
+calf_tuner_get_preferred_height (GtkWidget *widget,
+                                gint *minimal_height,
+                                gint *natural_height)
+{
+    GtkRequisition requisition;
+
+    calf_tuner_size_request (widget, &requisition);
+
+    *minimal_height = *natural_height = requisition.height;
 }
 
 static void
 calf_tuner_class_init (CalfTunerClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_tuner_expose;
-    widget_class->size_request = calf_tuner_size_request;
+    widget_class->draw = calf_tuner_draw;
+    widget_class->get_preferred_width = calf_tuner_get_preferred_width;
+    widget_class->get_preferred_height = calf_tuner_get_preferred_height;
     widget_class->size_allocate = calf_tuner_size_allocate;
 }
 
@@ -241,11 +271,13 @@ calf_tuner_unrealize (GtkWidget *widget, CalfTuner *tuner)
 static void
 calf_tuner_init (CalfTuner *self)
 {
+    GtkRequisition requisition;
     GtkWidget *widget = GTK_WIDGET(self);
-    widget->requisition.width = 40;
-    widget->requisition.height = 40;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = 40;
+    requisition.height = 40;
     self->background = NULL;
-    g_signal_connect(GTK_OBJECT(widget), "unrealize", G_CALLBACK(calf_tuner_unrealize), (gpointer)self);
+    g_signal_connect(G_OBJECT(widget), "unrealize", G_CALLBACK(calf_tuner_unrealize), (gpointer)self);
 }
 
 GtkWidget *

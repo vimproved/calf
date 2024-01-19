@@ -38,13 +38,12 @@ calf_curve_new(unsigned int point_limit)
 }
 
 static gboolean
-calf_curve_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_curve_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_CURVE(widget));
     
     CalfCurve *self = CALF_CURVE(widget);
-    GdkWindow *window = widget->window;
-    cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(window));
+    GdkWindow *window = gtk_widget_get_window(widget);
     GdkColor scHot = { 0, 65535, 0, 0 };
     GdkColor scPoint = { 0, 65535, 65535, 65535 };
     GdkColor scLine = { 0, 32767, 32767, 32767 };
@@ -84,24 +83,27 @@ calf_curve_expose (GtkWidget *widget, GdkEventExpose *event)
 static void
 calf_curve_realize(GtkWidget *widget)
 {
-    GTK_WIDGET_SET_FLAGS(widget, GTK_REALIZED);
+    gtk_widget_set_realized(widget, TRUE);
 
     GdkWindowAttr attributes;
     attributes.event_mask = GDK_EXPOSURE_MASK | GDK_BUTTON1_MOTION_MASK | 
         GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK | 
         GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | 
         GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK;
-    attributes.x = widget->allocation.x;
-    attributes.y = widget->allocation.y;
-    attributes.width = widget->allocation.width;
-    attributes.height = widget->allocation.height;
+    GtkAllocation * allocation;
+    gtk_widget_get_allocation(widget, allocation);
+    attributes.x = allocation->x;
+    attributes.y = allocation->y;
+    attributes.width = allocation->width;
+    attributes.height = allocation->height;
     attributes.wclass = GDK_INPUT_OUTPUT;
     attributes.window_type = GDK_WINDOW_CHILD;
 
-    widget->window = gdk_window_new(gtk_widget_get_parent_window (widget), &attributes, GDK_WA_X | GDK_WA_Y);
+    gtk_widget_set_window(widget, gdk_window_new(gtk_widget_get_parent_window (widget), &attributes, GDK_WA_X | GDK_WA_Y));
 
-    gdk_window_set_user_data(widget->window, widget);
-    widget->style = gtk_style_attach(widget->style, widget->window);
+    GdkWindow * window = gtk_widget_get_window(widget);
+    gdk_window_set_user_data(window, widget);
+    gtk_widget_set_style(widget, gtk_style_attach(gtk_widget_get_style(widget), window));
 }
 
 static void
@@ -115,15 +117,39 @@ calf_curve_size_request (GtkWidget *widget,
 }
 
 static void
+calf_curve_get_preferred_width (GtkWidget *widget,
+                                gint *minimal_width,
+                                gint *natural_width)
+{
+    GtkRequisition requisition;
+
+    calf_curve_size_request (widget, &requisition);
+
+    *minimal_width = *natural_width = requisition.width;
+}
+
+static void
+calf_curve_get_preferred_height (GtkWidget *widget,
+                                gint *minimal_height,
+                                gint *natural_height)
+{
+    GtkRequisition requisition;
+
+    calf_curve_size_request (widget, &requisition);
+
+    *minimal_height = *natural_height = requisition.height;
+}
+
+static void
 calf_curve_size_allocate (GtkWidget *widget,
                            GtkAllocation *allocation)
 {
     g_assert(CALF_IS_CURVE(widget));
     
-    widget->allocation = *allocation;
+    gtk_widget_set_allocation(widget, allocation);
     
-    if (GTK_WIDGET_REALIZED(widget))
-        gdk_window_move_resize(widget->window, allocation->x, allocation->y, allocation->width, allocation->height );
+    if (gtk_widget_get_realized(widget))
+        gdk_window_move_resize(gtk_widget_get_window(widget), allocation->x, allocation->y, allocation->width, allocation->height );
 }
 
 static int 
@@ -178,7 +204,7 @@ calf_curve_button_press (GtkWidget *widget, GdkEventButton *event)
     gtk_widget_queue_draw(widget);
     if (self->sink)
         self->sink->curve_changed(self, *self->points);
-    gdk_window_set_cursor(widget->window, self->hand_cursor);
+    gdk_window_set_cursor(gtk_widget_get_window(widget), self->hand_cursor);
     return TRUE;
 }
 
@@ -194,13 +220,15 @@ calf_curve_button_release (GtkWidget *widget, GdkEventButton *event)
     if (self->sink)
         self->sink->curve_changed(self, *self->points);
     gtk_widget_queue_draw(widget);
-    gdk_window_set_cursor(widget->window, self->points->size() >= self->point_limit ? self->arrow_cursor : self->pencil_cursor);
+    gdk_window_set_cursor(gtk_widget_get_window(widget), self->points->size() >= self->point_limit ? self->arrow_cursor : self->pencil_cursor);
     return FALSE;
 }
 
 static gboolean
 calf_curve_pointer_motion (GtkWidget *widget, GdkEventMotion *event)
 {
+    GdkWindow * window = gtk_widget_get_window(widget);
+
     g_assert(CALF_IS_CURVE(widget));
     if (event->is_hint)
     {
@@ -227,9 +255,9 @@ calf_curve_pointer_motion (GtkWidget *widget, GdkEventMotion *event)
     {
         int insert_pt = -1;
         if (find_nearest(self, event->x, event->y, insert_pt) == -1)
-            gdk_window_set_cursor(widget->window, self->points->size() >= self->point_limit ? self->arrow_cursor : self->pencil_cursor);
+            gdk_window_set_cursor(window, self->points->size() >= self->point_limit ? self->arrow_cursor : self->pencil_cursor);
         else
-            gdk_window_set_cursor(widget->window, self->hand_cursor);
+            gdk_window_set_cursor(window, self->hand_cursor);
     }
     return FALSE;
 }
@@ -253,8 +281,9 @@ calf_curve_class_init (CalfCurveClass *klass)
     
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
     widget_class->realize = calf_curve_realize;
-    widget_class->expose_event = calf_curve_expose;
-    widget_class->size_request = calf_curve_size_request;
+    widget_class->draw = calf_curve_draw;
+    widget_class->get_preferred_width = calf_curve_get_preferred_width;
+    widget_class->get_preferred_height = calf_curve_get_preferred_height;
     widget_class->size_allocate = calf_curve_size_allocate;
     widget_class->button_press_event = calf_curve_button_press;
     widget_class->button_release_event = calf_curve_button_release;
@@ -269,7 +298,7 @@ static void
 calf_curve_init (CalfCurve *self)
 {
     GtkWidget *widget = GTK_WIDGET(self);
-    GTK_WIDGET_SET_FLAGS (widget, GTK_CAN_FOCUS);
+    gtk_widget_set_can_focus(widget, TRUE);
     self->points = new CalfCurve::point_vector;
     // XXXKF: destructor
     self->points->push_back(CalfCurve::point(0.f, 1.f));
@@ -286,13 +315,19 @@ calf_curve_init (CalfCurve *self)
 }
 
 void CalfCurve::log2phys(float &x, float &y) {
-    x = (x - x0) / (x1 - x0) * (parent.allocation.width - 2) + 1;
-    y = (y - y0) / (y1 - y0) * (parent.allocation.height - 2) + 1;
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(&parent, &allocation);
+
+    x = (x - x0) / (x1 - x0) * (allocation.width - 2) + 1;
+    y = (y - y0) / (y1 - y0) * (allocation.height - 2) + 1;
 }
 
 void CalfCurve::phys2log(float &x, float &y) {
-    x = x0 + (x - 1) * (x1 - x0) / (parent.allocation.width - 2);
-    y = y0 + (y - 1) * (y1 - y0) / (parent.allocation.height - 2);
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(&parent, &allocation);
+
+    x = x0 + (x - 1) * (x1 - x0) / (allocation.width - 2);
+    y = y0 + (y - 1) * (y1 - y0) / (allocation.height - 2);
 }
 
 void CalfCurve::clip(int pt, float &x, float &y, bool &hide)

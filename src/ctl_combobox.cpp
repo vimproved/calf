@@ -42,19 +42,21 @@ calf_combobox_new()
     return widget;
 }
 static gboolean
-calf_combobox_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_combobox_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_COMBOBOX(widget));
     
     if (gtk_widget_is_drawable (widget)) {
-        
-        int padx = widget->style->xthickness;
-        int pady = widget->style->ythickness;
-        
         GtkComboBox *cb = GTK_COMBO_BOX(widget);
         CalfCombobox *ccb = CALF_COMBOBOX(widget);
-        GdkWindow *window = widget->window;
-        cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(window));
+        GdkWindow *window = gtk_widget_get_window(widget);
+        GtkAllocation allocation;
+        GtkStyle *style = gtk_widget_get_style(widget);
+
+        gtk_widget_get_allocation(widget, &allocation);
+        
+        int padx = style->xthickness;
+        int pady = style->ythickness;
         
         GtkTreeModel *model = gtk_combo_box_get_model(cb);
         GtkTreeIter iter;
@@ -64,10 +66,10 @@ calf_combobox_expose (GtkWidget *widget, GdkEventExpose *event)
         else
             lab = g_strdup("");
             
-        int x  = widget->allocation.x;
-        int y  = widget->allocation.y;
-        int sx = widget->allocation.width;
-        int sy = widget->allocation.height;
+        int x  = allocation.x;
+        int y  = allocation.y;
+        int sx = allocation.width;
+        int sy = allocation.height;
         gint mx, my;
         bool hover = false;
         
@@ -84,17 +86,15 @@ calf_combobox_expose (GtkWidget *widget, GdkEventExpose *event)
         display_background(widget, c, x, y, sx - padx * 2, sy - pady * 2, padx, pady, radius, bevel, g_ascii_isspace(lab[0]) ? 0 : 1, shadow, hover ? lightshover : lights, hover ? dullhover : dull);
         
         // text
-        gtk_container_propagate_expose (GTK_CONTAINER (widget),
-            GTK_BIN (widget)->child, event);
+        gtk_container_propagate_draw (GTK_CONTAINER (widget),
+            gtk_bin_get_child(GTK_BIN (widget)), c);
 
         // arrow
         if (ccb->arrow) {
             int pw = gdk_pixbuf_get_width(ccb->arrow);
             int ph = gdk_pixbuf_get_height(ccb->arrow);
-            gdk_draw_pixbuf(GDK_DRAWABLE(window), widget->style->fg_gc[0],
-                ccb->arrow, 0, 0,
-                x + sx - padx - pw, y + (sy - ph) / 2, pw, ph,
-                GDK_RGB_DITHER_NORMAL, 0, 0);
+            gdk_cairo_set_source_pixbuf(c, ccb->arrow, x + sx - padx - pw, y + (sy - ph) / 2);
+            cairo_paint(c);
         }
         
         g_free(lab);
@@ -113,7 +113,7 @@ static void
 calf_combobox_class_init (CalfComboboxClass *klass)
 {
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
-    widget_class->expose_event = calf_combobox_expose;
+    widget_class->draw = calf_combobox_draw;
     gtk_widget_class_install_style_property(
         widget_class, g_param_spec_float("border-radius", "Border Radius", "Generate round edges",
         0, 24, 4, GParamFlags(G_PARAM_READWRITE)));
@@ -140,9 +140,11 @@ calf_combobox_class_init (CalfComboboxClass *klass)
 static void
 calf_combobox_init (CalfCombobox *self)
 {
+    GtkRequisition requisition;
     GtkWidget *widget = GTK_WIDGET(self);
-    widget->requisition.width = 40;
-    widget->requisition.height = 20;
+    gtk_widget_get_requisition(widget, &requisition);
+    requisition.width = 40;
+    requisition.height = 20;
 }
 
 GType

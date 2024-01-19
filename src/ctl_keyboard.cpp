@@ -36,15 +36,16 @@ calf_keyboard_new()
 }
 
 static gboolean
-calf_keyboard_expose (GtkWidget *widget, GdkEventExpose *event)
+calf_keyboard_draw (GtkWidget *widget, cairo_t *c)
 {
     g_assert(CALF_IS_KEYBOARD(widget));
     
     cairo_pattern_t *pat;
     CalfKeyboard *self = CALF_KEYBOARD(widget);
-    GdkWindow *window = widget->window;
-    cairo_t *c = gdk_cairo_create(GDK_DRAWABLE(window));
-    int sy = widget->allocation.height - 1;
+    GdkWindow *window = gtk_widget_get_window(widget);
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
+    int sy = allocation.height - 1;
     cairo_set_line_join(c, CAIRO_LINE_JOIN_MITER);
     cairo_set_line_width(c, 1);
     
@@ -104,11 +105,11 @@ calf_keyboard_expose (GtkWidget *widget, GdkEventExpose *event)
             }
         }
     }
-    
-    pat = cairo_pattern_create_linear (widget->allocation.x, widget->allocation.y, widget->allocation.x, (int)(widget->allocation.height * 0.2 + widget->allocation.y));
+   
+    pat = cairo_pattern_create_linear (allocation.x, allocation.y, allocation.x, (int)(allocation.height * 0.2 + allocation.y));
     cairo_pattern_add_color_stop_rgba (pat, 0.0, 0, 0, 0, 0.4);
     cairo_pattern_add_color_stop_rgba (pat, 1.0, 0, 0, 0, 0);
-    cairo_rectangle(c, widget->allocation.x, widget->allocation.y, widget->allocation.width, (int)(widget->allocation.height * 0.2));
+    cairo_rectangle(c, allocation.x, allocation.y, allocation.width, (int)(allocation.height * 0.2));
     cairo_set_source(c, pat);
     cairo_fill(c);
     
@@ -122,23 +123,27 @@ calf_keyboard_expose (GtkWidget *widget, GdkEventExpose *event)
 static void
 calf_keyboard_realize(GtkWidget *widget)
 {
-    GTK_WIDGET_SET_FLAGS(widget, GTK_REALIZED);
+    gtk_widget_set_realized(widget, TRUE);
 
     GdkWindowAttr attributes;
     attributes.event_mask = GDK_EXPOSURE_MASK | GDK_BUTTON1_MOTION_MASK | 
         GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK | 
         GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK;
-    attributes.x = widget->allocation.x;
-    attributes.y = widget->allocation.y;
-    attributes.width = widget->allocation.width;
-    attributes.height = widget->allocation.height;
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(widget, &allocation);
+    attributes.x = allocation.x;
+    attributes.y = allocation.y;
+    attributes.width = allocation.width;
+    attributes.height = allocation.height;
     attributes.wclass = GDK_INPUT_OUTPUT;
     attributes.window_type = GDK_WINDOW_CHILD;
 
-    widget->window = gdk_window_new(gtk_widget_get_parent_window (widget), &attributes, GDK_WA_X | GDK_WA_Y);
+    gtk_widget_set_window(widget,
+            gdk_window_new(gtk_widget_get_parent_window (widget), &attributes, GDK_WA_X | GDK_WA_Y));
 
-    gdk_window_set_user_data(widget->window, widget);
-    widget->style = gtk_style_attach(widget->style, widget->window);
+    GdkWindow * window = gtk_widget_get_window(widget);
+    gdk_window_set_user_data(window, widget);
+    gtk_widget_set_style(widget, gtk_style_attach(gtk_widget_get_style(widget), window));
 }
 
 static void
@@ -153,18 +158,46 @@ calf_keyboard_size_request (GtkWidget *widget,
 }
 
 static void
+calf_keyboard_get_preferred_width (GtkWidget *widget,
+                                    gint *minimal_width,
+                                    gint *natural_width)
+{
+    GtkRequisition requisition;
+
+    calf_keyboard_size_request (widget, &requisition);
+
+    *minimal_width = *natural_width = requisition.width;
+}
+
+static void
+calf_keyboard_get_preferred_height (GtkWidget *widget,
+                                    gint *minimal_height,
+                                    gint *natural_height)
+{
+    GtkRequisition requisition;
+
+    calf_keyboard_size_request (widget, &requisition);
+
+    *minimal_height = *natural_height = requisition.height;
+}
+
+static void
 calf_keyboard_size_allocate (GtkWidget *widget,
                            GtkAllocation *allocation)
 {
+    GtkAllocation widget_allocation;
+    GtkRequisition widget_requisition;
+    gtk_widget_get_requisition(widget, &widget_requisition);
     // CalfKeyboard *self = CALF_KEYBOARD(widget);
     g_assert(CALF_IS_KEYBOARD(widget));
-    widget->allocation = *allocation;
-    widget->allocation.width = widget->requisition.width;
+    widget_allocation = *allocation;
+    widget_allocation.width = widget_requisition.width;
+    gtk_widget_set_allocation(widget, &widget_allocation);
     
-    if (GTK_WIDGET_REALIZED(widget))
-        gdk_window_move_resize(widget->window, 
-            allocation->x + (allocation->width - widget->allocation.width) / 2, allocation->y, 
-            widget->allocation.width, allocation->height );
+    if (gtk_widget_get_realized(widget))
+        gdk_window_move_resize(gtk_widget_get_window(widget), 
+            allocation->x + (allocation->width - widget_allocation.width) / 2, allocation->y, 
+            widget_allocation.width, allocation->height );
 }
 
 static gboolean
@@ -180,8 +213,11 @@ calf_keyboard_key_press (GtkWidget *widget, GdkEventKey *event)
 int
 calf_keyboard_pos_to_note (CalfKeyboard *kb, int x, int y, int *vel = NULL)
 {
+    GtkAllocation allocation;
+    gtk_widget_get_allocation(&kb->parent, &allocation);
+
     // first try black keys
-    if (y <= kb->parent.allocation.height * 3 / 5 && x >= 0 && (x - 8) % 12 < 8)
+    if (y <= allocation.height * 3 / 5 && x >= 0 && (x - 8) % 12 < 8)
     {
         int blackkey = (x - 8) / 12;
         if (blackkey < kb->nkeys && (59 & (1 << (blackkey % 7))))
@@ -248,8 +284,9 @@ calf_keyboard_class_init (CalfKeyboardClass *klass)
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
     widget_class->realize = calf_keyboard_realize;
     widget_class->size_allocate = calf_keyboard_size_allocate;
-    widget_class->expose_event = calf_keyboard_expose;
-    widget_class->size_request = calf_keyboard_size_request;
+    widget_class->draw = calf_keyboard_draw;
+    widget_class->get_preferred_width = calf_keyboard_get_preferred_width;
+    widget_class->get_preferred_height = calf_keyboard_get_preferred_height;
     widget_class->button_press_event = calf_keyboard_button_press;
     widget_class->button_release_event = calf_keyboard_button_release;
     widget_class->motion_notify_event = calf_keyboard_pointer_motion;
@@ -263,7 +300,7 @@ calf_keyboard_init (CalfKeyboard *self)
     static CalfKeyboard::EventAdapter default_sink;
     GtkWidget *widget = GTK_WIDGET(self);
     g_assert(CALF_IS_KEYBOARD(widget));
-    GTK_WIDGET_SET_FLAGS (GTK_WIDGET(self), GTK_CAN_FOCUS);
+    gtk_widget_set_can_focus (GTK_WIDGET(self), TRUE);
     self->nkeys = 7 * 3 + 1;
     self->sink = &default_sink;
     self->last_key = -1;
